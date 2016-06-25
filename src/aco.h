@@ -1,21 +1,41 @@
 #pragma once
 
 #include <bits/stdc++.h>
+#include "ant.h"
+#include "node.h"
+#include "layer.h"
 
 using namespace std;
 
 class ACO{
 public:
-	ACO();
+	// Contruct given a filename
+	ACO(string& filename);
+	// Main parameters for the model
 	int epochs;
 	int layers_count;
 	int ants_count;
 	int pheromone_degeneration;
-	vector<int> ants;
-	vector<int> nodes;
-	vector<int> tunnels;
-	vector<int> layers;
-	void load_rules();
+	int commodities_count;
+	int nodes_count;
+	int density;
+	// Structures for this model
+	// Every variable maps ids to objects
+	map<int, int> supply;
+	map<int, int> demand;
+	map<int, unique_ptr<Ant> > ants;
+	map<int, shared_ptr<Layer> > layers;
+	// Main tables
+	map<int, map<int, double> > probability_table;
+	map<int, map<int, double> > pheromone_table;
+	map<int, map<int, double> > pheromone_desirability_sum;
+	map<int, map<int, map<int, int> > > cost_table;
+	map<int, map<int, map<int, double> > > desirability;
+	map<int, map<int, int> > capacity_table;
+	// Functions that should do most of the work
+	void load_model(string& model_file, string& supply_file);
 	void start_model();
 	void one_step();
+	void update_tables();
+	int randomly_select_node(int node_from);
 };

@@ -6,11 +6,14 @@ using namespace std;
 
 class Ant{
 public:
+	// Construct the ant
+	Ant(int id);
 	int id;
-	int commodity;
+	int commodity_id;
 	int package_size;
 	int total_paid;
-	int current_node;
+	int priority;
+	vector<int> path;
 	void go_to_next_node();
 	void leave_trail();
 };

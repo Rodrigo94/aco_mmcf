@@ -8,24 +8,21 @@ CPP_SRCS += \
 ../src/aco.cpp \
 ../src/ant.cpp \
 ../src/layer.cpp \
-../src/node.cpp \
-../src/tunnel.cpp
+../src/node.cpp 
 
 OBJS += \
 ./src/main.o \
 ./src/aco.o \
 ./src/ant.o \
 ./src/layer.o \
-./src/node.o \
-./src/tunnel.o
+./src/node.o 
 
 CPP_DEPS += \
 ./src/main.d \
 ./src/aco.d \
 ./src/ant.d \
 ./src/layer.d \
-./src/node.d \
-./src/tunnel.d
+./src/node.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes
