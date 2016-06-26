@@ -28,6 +28,9 @@ ACO::ACO(string& filename) {
 		unique_ptr<Ant> a(new Ant(i));
 		ants[i] = move(a);
 		ants[i]->id = i;
+		ants[i]->commodity_id = (i % commodities_count) + 1;
+		ants[i]->package_size = 1;
+		ant_path[i] = vector<int>();
 	}
 	// Setup the layers
 	int nodes_per_layer = int(nodes_count/(layers_count-2));
@@ -62,22 +65,15 @@ void ACO::load_model(string& model_file, string& supply_file){
 			cost = atoi(c.c_str());
 			capacity = atoi(u.c_str());
 			//cout << "from " << node_from << " to " << node_to << " layer " << layer << " commodity_id " << commodity_id << " cost " << cost << " capacity " << capacity << endl;
-			cost_table[node_from][node_to][commodity_id] = cost;
 			capacity_table[node_from][node_to] = capacity;
-			pheromone_table[node_from][node_to] = 0.0;
-			probability_table[node_from][node_to] = 1.0;
+			remaining_capacity_table[node_from][node_to] = capacity;
+			cost_table[node_from][node_to][commodity_id] = cost;
+			desirability[node_from][node_to][commodity_id] = 1./cost;
+			pheromone_table[node_from][node_to][commodity_id] = 0.01;
 			file >> u;
 		}
 	} else {
 		exit(1);
-	}
-	// Set the probabilities table
-	for(int i=1; i<nodes_count; i++){
-		for(auto& it: probability_table[i]){
-			int j=it.first;
-			probability_table[i][j] /= probability_table[i].size(); 
-			//cout << "Para ir de " << i << " ate " << j << " tem prob " <<  probability_table[i][j] << endl;
-		}
 	}
 	file.close();
 	// Then, setup supply
@@ -93,61 +89,80 @@ void ACO::load_model(string& model_file, string& supply_file){
 		exit(1);
 	}
 	file2.close();
-	// Setup the ants
-	for(int i=0; i<ants_count; i++){
-		ants[i]->commodity_id = (i % commodities_count) + 1;
-		ants[i]->package_size = 1;
-		ants[i]->priority = 1;
-		layers[0]->nodes[1]->ants[i] = move(ants[i]);
-	}
 }
 
 void ACO::one_step(){
+	setup_ants();
 	// For each layer
 	for(int i=0; i<layers_count-1; i++){
-		//cout << "Camada de no " << layers[i]->id << endl;
 		for(auto& node: layers[i]->nodes){
-			//cout << "No' de no " << node.second->id << endl;
 			for(auto& ant: node.second->ants){
 				int ant_id = ant.second->id;
 				int source = node.first;
-				int target = randomly_select_node(node.first);
-				//cout << "Formiga no " << ant.second->id << " e commodity " << ant.second->commodity_id << endl;
-				//cout << "\tVai ir pro " << target << endl;
+				// Randomly selects a target node that has at least 1 unit of capacity free
+				int target = randomly_select_node(node.first,ant.second->commodity_id);
+				// The package must respect ant's limit 
+				int package = min(ant.second->package_size, remaining_capacity_table[source][target]);
+				ant.second->package_size = package;
+				// Move the ant pointer
 				layers[i+1]->nodes[target]->ants[ant_id] = move(ant.second);
 				ant.second.reset(nullptr);
-				cout << "Vou tentar deletar a formiga " << ant_id << endl;
 				layers[i]->nodes[source]->ants.erase(ant_id);
+				// Update ant's path
+				ant_path[i].push_back(target);
+				// Update arc's capacity
+				remaining_capacity_table[source][target] -= package;
 			}
 		}
 	}
-	// For each layer
-	cout << "Agora vou ver as formigas q sobraram " << endl;
-	for(int i=0; i<layers_count; i++){
-		cout << "Camada de no " << layers[i]->id << endl;
-		for(auto& node: layers[i]->nodes){
-			cout << "No' de no " << node.second->id << " : " << node.second->ants.size() << endl;
-			for(auto& ant: node.second->ants){
-				int ant_id = ant.second->id;
-				int target = randomly_select_node(node.first);
-				cout << "Formiga no " << ant.second->id << " e commodity " << ant.second->commodity_id << endl;
-				//cout << "\tVai ir pro " << target << endl;
-				//layers[i+1]->nodes[target]->ants[ant_id] = move(ant.second);
-			}
-		}
+	check_ants();
+	update_tables();
+}
+
+void ACO::setup_ants(){
+	for(int i=0; i<ants_count; i++){
+		ant_path[i].clear();
+		ant_path[i] = vector<int>();
+		layers[0]->nodes[1]->ants[i] = move(ants[i]);
+		ants[i].reset(nullptr);
+		ants.erase(i);
 	}
 }
 
-int ACO::randomly_select_node(int node_from){
+void ACO::check_ants(){
+	// Evaluate ants
+	// Send ants back home
+	for(int i=0; i<ants_count; i++){
+		ants[i] = move(layers[layers_count-1]->nodes[nodes_count+2]->ants[i]);
+		layers[layers_count-1]->nodes[nodes_count+2]->ants[i].reset(nullptr);
+		layers[layers_count-1]->nodes[nodes_count+2]->ants.erase(i);
+	}
+}
+
+void ACO::update_tables(){
+
+}
+
+int ACO::randomly_select_node(int node_from, int commodity_id){
 	double r = (double)rand() / RAND_MAX;
-	double s = 0.0;
+	double s,sum = 0.0;
 	int target;
-	for(auto& it: probability_table[node_from]){
-		target = it.first;
-		s += it.second;
-		if(s >= r){
-			break;
+	for(auto& it: pheromone_table[node_from]){
+		if(remaining_capacity_table[node_from][it.first] > 0){
+			sum += (pheromone_table[node_from][it.first][commodity_id] * desirability[node_from][it.first][commodity_id]);
 		}
 	}
+	//cout << "A soma deu " << sum << endl;
+	for(auto& it: pheromone_table[node_from]){
+		if(remaining_capacity_table[node_from][it.first] > 0){
+			//cout << it.first << " com prob " << (pheromone_table[node_from][it.first][commodity_id] * desirability[node_from][it.first][commodity_id]) / sum << endl;
+			target = it.first;
+			s += (pheromone_table[node_from][it.first][commodity_id] * desirability[node_from][it.first][commodity_id]) / sum;
+			if(s >= r){
+				break;
+			}
+		}
+	}
+	//cout << "escolhi " << target << endl;
 	return target;
 }

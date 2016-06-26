@@ -13,7 +13,6 @@ public:
 	int package_size;
 	int total_paid;
 	int priority;
-	vector<int> path;
 	void go_to_next_node();
 	void leave_trail();
 };
