@@ -19,6 +19,12 @@ public:
 	int commodities_count;
 	int nodes_count;
 	int density;
+	int pheromone_constant;
+	int pheromone_max;
+	int pheromone_min;
+	// Optimization variables
+	int current_cost;
+	int best_cost;
 	// Structures for this model
 	// Every variable maps ids to objects
 	map<int, int> supply;
@@ -33,6 +39,7 @@ public:
 	map<int, map<int, map<int, double> > > pheromone_table;
 	// Stores the path of every ants
 	map<int, vector<int> > ant_path;
+	map<int, vector<int> > best_path;
 	// Functions that should do most of the work
 	void load_model(string& model_file, string& supply_file);
 	void start_model();

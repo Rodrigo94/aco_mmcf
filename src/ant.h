@@ -13,6 +13,4 @@ public:
 	int package_size;
 	int total_paid;
 	int priority;
-	void go_to_next_node();
-	void leave_trail();
 };

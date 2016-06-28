@@ -7,11 +7,9 @@ int main(){
 	string filename3("data/aco.supply");
 	ACO A(filename1);
 	A.load_model(filename2, filename3);
-	cout << "STEP ONE ---------------------------------" << endl;
-	A.one_step();
-	cout << "STEP TWO ---------------------------------" << endl;
-	A.one_step();
-	cout << "STEP THREE ---------------------------------" << endl;
-	A.one_step();
+	for(int i=0; i<1000; i++){
+		cout << "Step " << i << endl;
+		A.one_step();
+	}
   return 0;
 }

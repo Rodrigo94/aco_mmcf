@@ -22,6 +22,9 @@ ACO::ACO(string& filename) {
 	pheromone_degeneration = aco_configs["PHEROMONE_DEGRADATION"];
 	commodities_count = aco_configs["COMMODITIES"];
 	density = aco_configs["DENSITY"];
+	pheromone_constant = aco_configs["PHEROMONE_CONSTANT"];
+	pheromone_max = aco_configs["PHEROMONE_MAX"];
+	pheromone_min = aco_configs["PHEROMONE_MIN"];
 	file.close();
 	// Setup the ants
 	for(int i=0; i<ants_count; i++){
@@ -64,12 +67,11 @@ void ACO::load_model(string& model_file, string& supply_file){
 			commodity_id = atoi(k.c_str());
 			cost = atoi(c.c_str());
 			capacity = atoi(u.c_str());
-			//cout << "from " << node_from << " to " << node_to << " layer " << layer << " commodity_id " << commodity_id << " cost " << cost << " capacity " << capacity << endl;
 			capacity_table[node_from][node_to] = capacity;
 			remaining_capacity_table[node_from][node_to] = capacity;
 			cost_table[node_from][node_to][commodity_id] = cost;
 			desirability[node_from][node_to][commodity_id] = 1./cost;
-			pheromone_table[node_from][node_to][commodity_id] = 0.01;
+			pheromone_table[node_from][node_to][commodity_id] = double(pheromone_min);
 			file >> u;
 		}
 	} else {
@@ -83,7 +85,7 @@ void ACO::load_model(string& model_file, string& supply_file){
 			file2 >> s;
 			file2 >> u;
 			demand[atoi(s.c_str())] = atoi(u.c_str());
-			supply[atoi(s.c_str())] = 0;
+			supply[atoi(s.c_str())] = 1;
 		}
 	} else {
 		exit(1);
@@ -103,13 +105,17 @@ void ACO::one_step(){
 				int target = randomly_select_node(node.first,ant.second->commodity_id);
 				// The package must respect ant's limit 
 				int package = min(ant.second->package_size, remaining_capacity_table[source][target]);
+				// Update the supply if the ant drops anything
+				if(package > ant.second->package_size){
+					supply[ant.second->commodity_id] -= (package - ant.second->package_size);
+				}
 				ant.second->package_size = package;
 				// Move the ant pointer
 				layers[i+1]->nodes[target]->ants[ant_id] = move(ant.second);
 				ant.second.reset(nullptr);
 				layers[i]->nodes[source]->ants.erase(ant_id);
 				// Update ant's path
-				ant_path[i].push_back(target);
+				ant_path[ant_id].push_back(target);
 				// Update arc's capacity
 				remaining_capacity_table[source][target] -= package;
 			}
@@ -130,17 +136,68 @@ void ACO::setup_ants(){
 }
 
 void ACO::check_ants(){
-	// Evaluate ants
-	// Send ants back home
+	// Send ants back home and evaluate them
 	for(int i=0; i<ants_count; i++){
 		ants[i] = move(layers[layers_count-1]->nodes[nodes_count+2]->ants[i]);
 		layers[layers_count-1]->nodes[nodes_count+2]->ants[i].reset(nullptr);
 		layers[layers_count-1]->nodes[nodes_count+2]->ants.erase(i);
+		// Compute the cost of this ant
+		int ant_cost = 0;
+		int previous_node = 1;
+		int commodity_id = ants[i]->commodity_id;
+		for(int j=0; j<layers_count; j++){
+			int next_node = ant_path[i][j];
+			ant_cost += cost_table[previous_node][next_node][commodity_id];
+			previous_node = next_node;
+		}
+		ant_cost *= ants[i]->package_size;
+		ants[i]->total_paid = ant_cost;
+		if(demand[commodity_id] - supply[commodity_id] > 0){
+			ants[i]->package_size += 1;
+			supply[commodity_id] += 1;
+		}
 	}
 }
 
 void ACO::update_tables(){
-
+	// Updates the pheromone table:
+	for(auto& node_from : pheromone_table){
+		for(auto& node_to : node_from.second){
+			for(auto& commodity : node_to.second){
+				int i = node_from.first;
+				int j = node_to.first;
+				int k = commodity.first;
+				double old_pheromone = pheromone_table[i][j][k];
+				double new_pheromone = pheromone_table[i][j][k] * (1. - double(pheromone_degeneration) / 100.);
+				if(new_pheromone < double(pheromone_min)){
+					new_pheromone = double(pheromone_min);
+				}
+				pheromone_table[i][j][k] = new_pheromone;
+			}
+		}
+	}
+	// Updates the pheromone dropped by the ants
+	for(int i=0; i<ants_count; i++){
+		double delta_pheromone = double(pheromone_constant)/ double(ants[i]->total_paid);
+		int commodity_id = ants[i]->commodity_id;
+		int previous_node = 1;
+		for(int j=0; j<layers_count; j++){
+			int next_node = ant_path[i][j];
+			double old_pheromone = pheromone_table[previous_node][next_node][commodity_id];
+			double new_pheromone = delta_pheromone + pheromone_table[previous_node][next_node][commodity_id];
+			if(new_pheromone > double(pheromone_max)){
+				new_pheromone = double(pheromone_max);
+			}
+			pheromone_table[previous_node][next_node][commodity_id] = new_pheromone;
+			previous_node = next_node;
+		}
+	}
+	// Reset the remaining capacities table
+	for(auto& node_from : remaining_capacity_table){
+		for(auto& node_to : node_from.second){
+			remaining_capacity_table[node_from.first][node_to.first] = capacity_table[node_from.first][node_to.first];
+		}
+	}
 }
 
 int ACO::randomly_select_node(int node_from, int commodity_id){
@@ -152,10 +209,8 @@ int ACO::randomly_select_node(int node_from, int commodity_id){
 			sum += (pheromone_table[node_from][it.first][commodity_id] * desirability[node_from][it.first][commodity_id]);
 		}
 	}
-	//cout << "A soma deu " << sum << endl;
 	for(auto& it: pheromone_table[node_from]){
 		if(remaining_capacity_table[node_from][it.first] > 0){
-			//cout << it.first << " com prob " << (pheromone_table[node_from][it.first][commodity_id] * desirability[node_from][it.first][commodity_id]) / sum << endl;
 			target = it.first;
 			s += (pheromone_table[node_from][it.first][commodity_id] * desirability[node_from][it.first][commodity_id]) / sum;
 			if(s >= r){
@@ -163,6 +218,5 @@ int ACO::randomly_select_node(int node_from, int commodity_id){
 			}
 		}
 	}
-	//cout << "escolhi " << target << endl;
 	return target;
 }
