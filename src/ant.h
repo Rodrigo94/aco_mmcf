@@ -12,5 +12,6 @@ public:
 	int commodity_id;
 	int package_size;
 	int total_paid;
+	double average_cost;
 	int priority;
 };

@@ -8,7 +8,7 @@ int main(){
 	ACO A(filename1);
 	A.load_model(filename2, filename3);
 	for(int i=0; i<1000; i++){
-		cout << "Step " << i << endl;
+		cout << "Step " << i << "\t\t";
 		A.one_step();
 	}
   return 0;

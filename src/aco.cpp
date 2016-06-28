@@ -79,12 +79,14 @@ void ACO::load_model(string& model_file, string& supply_file){
 	}
 	file.close();
 	// Then, setup supply
+	total_demand = 0;
 	ifstream file2(supply_file.c_str());
 	if(file2.is_open()){
 		while(!file2.eof()){
 			file2 >> s;
 			file2 >> u;
 			demand[atoi(s.c_str())] = atoi(u.c_str());
+			total_demand += atoi(u.c_str());
 			supply[atoi(s.c_str())] = 1;
 		}
 	} else {
@@ -106,8 +108,8 @@ void ACO::one_step(){
 				// The package must respect ant's limit 
 				int package = min(ant.second->package_size, remaining_capacity_table[source][target]);
 				// Update the supply if the ant drops anything
-				if(package > ant.second->package_size){
-					supply[ant.second->commodity_id] -= (package - ant.second->package_size);
+				if(package < ant.second->package_size){
+					supply[ant.second->commodity_id] -= (ant.second->package_size - package);
 				}
 				ant.second->package_size = package;
 				// Move the ant pointer
@@ -136,6 +138,9 @@ void ACO::setup_ants(){
 }
 
 void ACO::check_ants(){
+	// Gets the total cost:
+	int total_cost = 0;
+	int remaining_demand = total_demand;
 	// Send ants back home and evaluate them
 	for(int i=0; i<ants_count; i++){
 		ants[i] = move(layers[layers_count-1]->nodes[nodes_count+2]->ants[i]);
@@ -151,12 +156,16 @@ void ACO::check_ants(){
 			previous_node = next_node;
 		}
 		ant_cost *= ants[i]->package_size;
+		total_cost += ant_cost;
+		remaining_demand -= ants[i]->package_size;
 		ants[i]->total_paid = ant_cost;
+		ants[i]->average_cost = double(ant_cost) / (demand[commodity_id] * (ants[i]->package_size + 0.001));
 		if(demand[commodity_id] - supply[commodity_id] > 0){
 			ants[i]->package_size += 1;
 			supply[commodity_id] += 1;
 		}
 	}
+	//cout << double(remaining_demand) / total_demand <<  "\t" << total_cost << endl;
 }
 
 void ACO::update_tables(){
@@ -178,7 +187,7 @@ void ACO::update_tables(){
 	}
 	// Updates the pheromone dropped by the ants
 	for(int i=0; i<ants_count; i++){
-		double delta_pheromone = double(pheromone_constant)/ double(ants[i]->total_paid);
+		double delta_pheromone = double(pheromone_constant)/ double(ants[i]->average_cost + 0.0001);
 		int commodity_id = ants[i]->commodity_id;
 		int previous_node = 1;
 		for(int j=0; j<layers_count; j++){
@@ -201,8 +210,9 @@ void ACO::update_tables(){
 }
 
 int ACO::randomly_select_node(int node_from, int commodity_id){
+
 	double r = (double)rand() / RAND_MAX;
-	double s,sum = 0.0;
+	double s = 0.0, sum = 0.0;
 	int target;
 	for(auto& it: pheromone_table[node_from]){
 		if(remaining_capacity_table[node_from][it.first] > 0){

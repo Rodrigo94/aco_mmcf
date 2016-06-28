@@ -25,6 +25,8 @@ public:
 	// Optimization variables
 	int current_cost;
 	int best_cost;
+	int total_demand;
+	int best_supply;
 	// Structures for this model
 	// Every variable maps ids to objects
 	map<int, int> supply;
